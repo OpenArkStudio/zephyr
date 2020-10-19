@@ -1,0 +1,207 @@
+/*
+ * COPYRIGHT (C) 2017-2019, zhllxt
+ *
+ * author   : zhllxt
+ * email    : 37792738@qq.com
+ * 
+ * Distributed under the GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007
+ * (See accompanying file LICENSE or see <http://www.gnu.org/licenses/>)
+ */
+
+#ifndef __ZEPHYR_RPC_SESSION_HPP__
+#define __ZEPHYR_RPC_SESSION_HPP__
+
+#if defined(_MSC_VER) && (_MSC_VER >= 1200)
+#pragma once
+#endif // defined(_MSC_VER) && (_MSC_VER >= 1200)
+
+#include <zephyr/tcp/tcp_session.hpp>
+#include <zephyr/tcp/tcps_session.hpp>
+#include <zephyr/http/ws_session.hpp>
+#include <zephyr/http/wss_session.hpp>
+
+#include <zephyr/rpc/detail/serialization.hpp>
+#include <zephyr/rpc/detail/protocol.hpp>
+#include <zephyr/rpc/detail/invoker.hpp>
+#include <zephyr/rpc/component/rpc_call_cp.hpp>
+#include <zephyr/rpc/impl/rpc_recv_op.hpp>
+
+namespace zephyr::detail
+{
+	template <class>                      class session_mgr_t;
+	template <class, class>               class server_impl_t;
+	template <class, class>               class tcp_server_impl_t;
+	template <class, class>               class tcps_server_impl_t;
+	template <class, class>               class ws_server_impl_t;
+	template <class, class>               class wss_server_impl_t;
+	template <class, class>               class rpc_server_impl_t;
+	template <class, class>               class rpcs_server_impl_t;
+
+	template<class derived_t, class executor_t>
+	class rpc_session_impl_t
+		: public executor_t
+		, public rpc_call_cp<derived_t, true>
+		, public rpc_recv_op<derived_t, true>
+		, protected id_maker<typename header::id_type>
+	{
+		friend executor_t;
+
+		template <class, bool>         friend class user_timer_cp;
+		template <class>               friend class post_cp;
+		template <class>               friend class data_persistence_cp;
+		template <class>               friend class event_queue_cp;
+		template <class, bool>         friend class send_cp;
+		template <class, bool>         friend class silence_timer_cp;
+		template <class, bool>         friend class connect_timeout_cp;
+		template <class, bool>         friend class tcp_send_op;
+		template <class, bool>         friend class tcp_recv_op;
+		template <class, class, bool>  friend class ws_stream_cp;
+		template <class, bool>         friend class ws_send_op;
+		template <class, bool>         friend class rpc_call_cp;
+		template <class, bool>         friend class rpc_recv_op;
+		template <class>               friend class session_mgr_t;
+
+		template <class, class, class>               friend class session_impl_t;
+		template <class, class, class>               friend class tcp_session_impl_t;
+		template <class, class, class>               friend class tcps_session_impl_t;
+		template <class, class, class, class, class> friend class ws_session_impl_t;
+		template <class, class, class, class, class> friend class wss_session_impl_t;
+
+		template <class, class> friend class server_impl_t;
+		template <class, class> friend class tcp_server_impl_t;
+		template <class, class> friend class tcps_server_impl_t;
+		template <class, class> friend class ws_server_impl_t;
+		template <class, class> friend class wss_server_impl_t;
+		template <class, class> friend class rpc_server_impl_t;
+		template <class, class> friend class rpcs_server_impl_t;
+
+	public:
+		using self = rpc_session_impl_t<derived_t, executor_t>;
+		using super = executor_t;
+		using executor_type = executor_t;
+
+	protected:
+		using super::send;
+		using super::_handle_recv;
+
+	public:
+		/**
+		 * @constructor
+		 */
+		template<class ...Args>
+		explicit rpc_session_impl_t(
+			invoker_t<derived_t>& invoker,
+			Args&&... args
+		)
+			: super(std::forward<Args>(args)...)
+			, rpc_call_cp<derived_t, true>(this->io_, this->serializer_, this->deserializer_)
+			, rpc_recv_op<derived_t, true>()
+			, id_maker<typename header::id_type>()
+			, invoker_(invoker)
+		{
+		}
+
+		/**
+		 * @destructor
+		 */
+		~rpc_session_impl_t()
+		{
+		}
+
+		/**
+		 * @function : set call rpc function timeout duration value
+		 */
+		template<class Rep, class Period>
+		inline derived_t & timeout(std::chrono::duration<Rep, Period> duration)
+		{
+			this->timeout_ = duration;
+			return (this->derived());
+		}
+
+		/**
+		 * @function : get call rpc function timeout duration value
+		 */
+		inline std::chrono::steady_clock::duration timeout()
+		{
+			return this->timeout_;
+		}
+
+	protected:
+		inline invoker_t<derived_t>& _invoker()
+		{
+			return (this->invoker_);
+		}
+
+		inline void _handle_disconnect(const error_code& ec, std::shared_ptr<derived_t> this_ptr)
+		{
+			while (!this->reqs_.empty())
+			{
+				auto& fn = this->reqs_.begin()->second;
+				fn(asio::error::operation_aborted, std::string_view{});
+			}
+
+			super::_handle_disconnect(ec, std::move(this_ptr));
+		}
+
+		inline void _fire_recv(std::shared_ptr<derived_t> & this_ptr, std::string_view s)
+		{
+			this->listener_.notify(event::recv, this_ptr, s);
+
+			this->derived()._rpc_handle_recv(this_ptr, s);
+		}
+
+	protected:
+		serializer                          serializer_;
+		deserializer                        deserializer_;
+		header                              header_;
+		invoker_t<derived_t>              & invoker_;
+		std::chrono::steady_clock::duration timeout_ = std::chrono::milliseconds(http_execute_timeout);
+	};
+}
+
+namespace zephyr
+{
+#if 1
+	/// Using tcp dgram mode as the underlying communication support
+	class rpc_session : public detail::rpc_session_impl_t<rpc_session,
+		detail::tcp_session_impl_t<rpc_session, asio::ip::tcp::socket, asio::streambuf>>
+	{
+	public:
+		using detail::rpc_session_impl_t<rpc_session,
+			detail::tcp_session_impl_t<rpc_session, asio::ip::tcp::socket, asio::streambuf>>::rpc_session_impl_t;
+	};
+
+	#if defined(ZEPHYR_USE_SSL)
+	class rpcs_session : public detail::rpc_session_impl_t<rpcs_session,
+		detail::tcps_session_impl_t<rpcs_session, asio::ip::tcp::socket, asio::streambuf>>
+	{
+	public:
+		using detail::rpc_session_impl_t<rpcs_session,
+			detail::tcps_session_impl_t<rpcs_session, asio::ip::tcp::socket, asio::streambuf>>::rpc_session_impl_t;
+	};
+	#endif
+#else
+	/// Using websocket as the underlying communication support
+	#ifndef ASIO_STANDALONE
+	class rpc_session : public detail::rpc_session_impl_t<rpc_session, detail::ws_session_impl_t<rpc_session, asio::ip::tcp::socket,
+		websocket::stream<asio::ip::tcp::socket&>, http::string_body, beast::flat_buffer>>
+	{
+	public:
+		using detail::rpc_session_impl_t<rpc_session, detail::ws_session_impl_t<rpc_session, asio::ip::tcp::socket,
+			websocket::stream<asio::ip::tcp::socket&>, http::string_body, beast::flat_buffer>>::rpc_session_impl_t;
+	};
+
+	#if defined(ZEPHYR_USE_SSL)
+	class rpcs_session : public detail::rpc_session_impl_t<rpcs_session, detail::wss_session_impl_t<rpcs_session, asio::ip::tcp::socket,
+		websocket::stream<asio::ssl::stream<asio::ip::tcp::socket&>&>, http::string_body, beast::flat_buffer>>
+	{
+	public:
+		using detail::rpc_session_impl_t<rpcs_session, detail::wss_session_impl_t<rpcs_session, asio::ip::tcp::socket,
+			websocket::stream<asio::ssl::stream<asio::ip::tcp::socket&>&>, http::string_body, beast::flat_buffer>>::rpc_session_impl_t;
+	};
+	#endif
+	#endif
+#endif
+}
+
+#endif // !__ZEPHYR_RPC_SESSION_HPP__
