@@ -72,13 +72,14 @@ namespace zephyr::detail
 			listener_t & listener,
 			io_t & rwio,
 			std::size_t init_buffer_size,
-			std::size_t max_buffer_size
+			std::size_t max_buffer_size,
+            std::size_t silence_timeout
 		)
 			: super(sessions, listener, rwio, init_buffer_size, max_buffer_size)
 			, http_send_cp<derived_t, body_t, buffer_t, true>(rwio)
 			, http_send_op<derived_t, body_t, buffer_t, true>()
 		{
-			this->silence_timeout_ = std::chrono::milliseconds(http_silence_timeout);
+			this->silence_timeout_ = std::chrono::milliseconds(silence_timeout);
 		}
 
 		/**

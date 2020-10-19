@@ -73,9 +73,10 @@ namespace zephyr::detail
 			listener_t & listener,
 			io_t & rwio,
 			std::size_t init_buffer_size,
-			std::size_t max_buffer_size
+			std::size_t max_buffer_size,
+            std::size_t silence_timeout
 		)
-			: super(ctx, sessions, listener, rwio, init_buffer_size, max_buffer_size)
+			: super(ctx, sessions, listener, rwio, init_buffer_size, max_buffer_size, silence_timeout)
 			, ws_stream_comp()
 			, ws_send_op<derived_t, true>()
 		{
