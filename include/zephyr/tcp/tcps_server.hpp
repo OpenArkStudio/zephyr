@@ -42,12 +42,13 @@ namespace zephyr::detail
 		 */
 		explicit tcps_server_impl_t(
 			asio::ssl::context::method method = asio::ssl::context::sslv23,
+            std::size_t silence_timeout = tcp_silence_timeout,
 			std::size_t init_buffer_size = tcp_frame_size,
 			std::size_t max_buffer_size = (std::numeric_limits<std::size_t>::max)(),
 			std::size_t concurrency = std::thread::hardware_concurrency() * 2
 		)
 			: ssl_context_cp<derived_t, true>(method)
-			, super(init_buffer_size, max_buffer_size, concurrency)
+			, super(tcp_silence_timeout, init_buffer_size, max_buffer_size, concurrency)
 		{
 		}
 

@@ -40,11 +40,12 @@ namespace zephyr::detail
 		 */
 		explicit https_server_impl_t(
 			asio::ssl::context::method method = asio::ssl::context::sslv23,
+            std::size_t silence_timeout = tcp_silence_timeout,
 			std::size_t init_buffer_size = tcp_frame_size,
 			std::size_t max_buffer_size = (std::numeric_limits<std::size_t>::max)(),
 			std::size_t concurrency = std::thread::hardware_concurrency() * 2
 		)
-			: super(method, init_buffer_size, max_buffer_size, concurrency)
+			: super(method, silence_timeout, silence_timeout, init_buffer_size, max_buffer_size, concurrency)
 		{
 		}
 
